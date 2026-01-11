@@ -9,7 +9,8 @@ import {
   Status,
 } from "shared";
 
-const wss = new WebSocketServer({ port: 8080 });
+const PORT = Number(process.env.PORT) ?? 8080;
+const wss = new WebSocketServer({ port: PORT });
 const FPS = 30;
 const BULLET_SPAWN_RATE = 2;
 const KILL_LEEWAY = 0.7;
@@ -65,7 +66,7 @@ function main() {
       });
     });
 
-    console.log("WebSocket server running on ws://localhost:8080");
+    console.log(`WebSocket server running on ws://localhost:${PORT}`);
 
     let lastUpdate = Date.now();
     setInterval(() => {
