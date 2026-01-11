@@ -15,7 +15,11 @@ export default function Game() {
 
   useEffect(() => {
     if (!socket) {
-      setSocket(new WebSocket(URL));
+      const url = URL;
+      if (!url) {
+        throw new Error("Web socket url unset: " + url);
+      }
+      setSocket(new WebSocket(url));
     } else {
       socket.onopen = () => {
         console.log("Connected");
