@@ -8,6 +8,7 @@ import {
   Vec2,
   Status,
 } from "shared";
+import { getScoresFromRound, getTop10AllTime, insertScore } from "./db";
 
 const PORT = Number(process.env.PORT) ?? 8080;
 const wss = new WebSocketServer({ port: PORT });
@@ -20,12 +21,18 @@ const state: State = {
   bullets: [],
   status: Status.NOT_READY,
   startTime: null,
+  roundId: null,
+  leaderBoard: null,
 }
 
 let curUserId = 0;
 
 const clients: {
   [userId: number]: () => void,
+} = {};
+
+const userNames: {
+  [userId: number]: string
 } = {};
 
 function main() {
@@ -51,6 +58,8 @@ function main() {
             break;
           }
           case "join": {
+            userNames[userId] = action.data;
+
             break;
           }
           default: {
@@ -63,6 +72,7 @@ function main() {
       ws.on("close", () => {
         console.log("Client disconnected")
         delete clients[userId];
+        delete userNames[userId];
       });
     });
 
@@ -102,7 +112,7 @@ function update(dt: number) {
 function updateStatus(state: State) {
   switch (state.status) {
     case Status.NOT_READY: {
-      if (Object.keys(clients).length > 0) {
+      if (Object.keys(userNames).length > 0) {
         state.status = Status.READY;
       }
       break;
@@ -114,7 +124,10 @@ function updateStatus(state: State) {
         
       for (const userIdStr of Object.keys(clients)) {
         const userId = Number(userIdStr);
-        spawnPlayer(state, userId);
+        const userName = userNames[userId];
+        if (userName !== undefined) {
+          spawnPlayer(state, userId, userName);
+        }
       }
 
       break;
@@ -125,7 +138,9 @@ function updateStatus(state: State) {
         state.startTime = Date.now() + 5000;
       } else if (state.startTime < Date.now()) {
         state.startTime = Date.now();
+        state.roundId = Math.random() * 123456789;
         state.status = Status.PLAYING;
+        Object.values(state.players).forEach(player => player.timeAlive = 0);
       }
       break;
     }
@@ -134,6 +149,9 @@ function updateStatus(state: State) {
       if (Object.keys(state.players).length === 0) {
         state.status = Status.ROUND_OVER;
         state.startTime = null;
+        if (state.roundId === null) throw new Error("roundId already null before round end");
+        state.leaderBoard = getScoresFromRound(state.roundId);
+        state.roundId = null;
       }
       break;
     }
@@ -142,8 +160,31 @@ function updateStatus(state: State) {
       if (state.startTime === null) {
         state.startTime = Date.now() + 5000;
       } else if (state.startTime < Date.now()) {
-        state.startTime = null;
+        state.startTime = Date.now();
+        state.status = Status.ROUND_SCORES;
+      }
+      break;
+    }
+
+    case Status.ROUND_SCORES: {
+      if (state.startTime === null) {
+        throw new Error("Start time was null when entering ROUND_SCORES status");
+      } else if (state.startTime + 5000 < Date.now()) {
+        const highScores = getTop10AllTime();
+        state.leaderBoard = highScores;
+        state.status = Status.HIGH_SCORES;
+        state.startTime = Date.now();
+      }
+      break;
+    }
+
+    case Status.HIGH_SCORES: {
+      if (state.startTime === null) {
+        throw new Error("Start time was null when entering HIGH_SCORES status");
+      } else if (state.startTime + 5000 < Date.now()) {
+        state.leaderBoard = null;
         state.status = Status.NOT_READY;
+        state.startTime = null;
       }
       break;
     }
@@ -157,7 +198,7 @@ function updateTimeAlives(state: State, dt: number) {
   state.bullets.forEach(bullet => bullet.timeAlive += dt);
 }
 
-function spawnPlayer(state: State, userId: number) {
+function spawnPlayer(state: State, userId: number, userName: string) {
   state.players[userId] = {
     pos: { x: 0, y: 0 },
     dest: { x: 0, y: 0 },
@@ -166,6 +207,7 @@ function spawnPlayer(state: State, userId: number) {
     lives: 1,
     timeAlive: 0,
     userId,
+    userName,
   }
 }
 
@@ -232,6 +274,10 @@ function killPlayers(state: State) {
   }
 
   for (const userId of killedPlayers) {
+    const player = state.players[userId];
+    if (state.roundId === null) throw new Error("Killed player but roundId is null??")
+    if (player) insertScore(player, state.roundId);
+
     delete state.players[userId];
   }
   state.bullets = state.bullets.filter((_, idx) => !killedBullets.includes(idx));

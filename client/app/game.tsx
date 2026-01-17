@@ -1,17 +1,17 @@
 "use client";
 
 import { MouseEvent, RefObject, useEffect, useRef, useState } from "react"
-import { Bullet, JoinAction, MoveAction, Player, State, Status, Vec2 } from "shared";
+import { Bullet, JoinAction, MoveAction, Player, State, Status, Vec2, Score } from "shared";
 import { URL, SCREEN_SIZE } from "@/utils/consts";
 import { g2s, g2sScale, s2g } from "@/utils/helpers";
 
 export default function Game() {
-  // CANVAS
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const headerRef = useRef<HTMLHeadingElement>(null);
+  const usernameInputRef = useRef<HTMLInputElement>(null);
 
-  // WEB
   const [socket, setSocket] = useState<WebSocket | null>(null);
+  const [username, setUsername] = useState<string | null>(null);
 
   useEffect(() => {
     if (!socket) {
@@ -23,14 +23,6 @@ export default function Game() {
     } else {
       socket.onopen = () => {
         console.log("Connected");
-
-        const joinAction: JoinAction = {
-          type: "join",
-          data: null,
-        }
-
-        socket.send(JSON.stringify({ action: joinAction }));
-
       };
 
       socket.onerror = error => {
@@ -47,6 +39,17 @@ export default function Game() {
       }
     }
   }, [socket]);
+
+  useEffect(() => {
+    if (username !== null && socket !== null) {
+      const joinAction: JoinAction = {
+        type: "join",
+        data: username,
+      }
+
+      socket.send(JSON.stringify({ action: joinAction }));
+    }
+  }, [username, socket]);
 
   useEffect(() => {
     const stop = (event: KeyboardEvent) => {
@@ -98,6 +101,27 @@ export default function Game() {
       textAlign: "center"
     }}>
       <h1 ref={headerRef} style={{ fontSize: "30px", textAlign: "center" }} />
+      {username === null && <>
+        <input
+          ref={usernameInputRef}
+          placeholder="Enter username here to join next round"
+          style={{
+            width: "400px"
+          }}
+        />
+        <button
+          onClick={() => {
+            if (usernameInputRef.current && usernameInputRef.current.value !== "") {
+              setUsername(usernameInputRef.current.value);
+            }
+          }}
+          style={{
+            backgroundColor: "#333"
+          }}
+        >
+          Submit Username
+        </button>
+      </>}
       <canvas
         ref={canvasRef}
         width={`${SCREEN_SIZE.x}px`}
@@ -133,7 +157,7 @@ function drawPlayer(player: Player, ctx: CanvasRenderingContext2D) {
   ctx.lineWidth = 1;
   ctx.strokeStyle = "black";
   ctx.font = "normal 14px serif"
-  ctx.strokeText(player.userId.toString(), drawPos.x, drawPos.y);
+  ctx.strokeText(player.userName, drawPos.x, drawPos.y - drawSize.y * 1.3);
 }
 
 function drawBullet(bullet: Bullet, ctx: CanvasRenderingContext2D) {
@@ -160,7 +184,7 @@ function GameStateHandler(
   }
 ) {
   const [gameState, setGameState] = useState<State>({
-    players: {}, bullets: [], status: Status.NOT_READY, startTime: null,
+    players: {}, bullets: [], status: Status.NOT_READY, startTime: null, roundId: null, leaderBoard: null,
   });
   const countdownIntervalRef = useRef<NodeJS.Timeout>(null);
 
@@ -175,6 +199,9 @@ function GameStateHandler(
   useEffect(() => {
     switch (gameState.status) {
       case Status.NOT_READY: {
+        if (headerRef.current) {
+          headerRef.current.textContent = `Waiting for players`;
+        }
         break;
       }
 
@@ -224,6 +251,24 @@ function GameStateHandler(
         break;
       }
 
+      case Status.ROUND_SCORES: {
+        if (headerRef.current) {
+          headerRef.current.textContent = "Round Scores";
+        }
+        console.log("ROUND SCORES:", gameState.leaderBoard);
+
+        break;
+      }
+
+      case Status.HIGH_SCORES: {
+        if (headerRef.current) {
+          headerRef.current.textContent = "High Scores";
+        }
+        console.log("HIGH SCORES:", gameState.leaderBoard);
+
+        break;
+      }
+
     }
   }, [gameState.status, headerRef]);
 
@@ -246,5 +291,42 @@ function GameStateHandler(
     }
   }, [canvasRef, gameState]);
 
-  return null;
+  if ([Status.ROUND_SCORES, Status.HIGH_SCORES].includes(gameState.status)) {
+    return <Leaderboard scores={gameState.leaderBoard} />;
+  } else {
+    return null;
+  }
+
+}
+
+function Leaderboard({ scores }: { scores: Score[] | null }) {
+  if (scores === null) return null;
+
+  return (
+    <table style={{
+      position: "fixed",
+      zIndex: 2,
+      color: "black",
+      border: "1px black solid",
+      top: "100px",
+      left: "200px",
+    }}>
+      <thead>
+        <tr>
+          <th>User Name</th>
+          <th>Time Alive</th>
+          <th>Timestamp</th>
+        </tr>
+      </thead>
+      <tbody>
+        {scores.map((score, idx) => (
+          <tr key={idx}>
+            <td>{score.userName}</td>
+            <td>{(score.timeAlive / 1000).toFixed(1)}s</td>
+            <td>{score.timestamp.toString()}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
 }

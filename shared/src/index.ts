@@ -19,11 +19,18 @@ export interface Obj {
 
 export interface Player extends Obj {
   userId: number,
+  userName: string,
   lives: number,
 }
 
 export interface Bullet extends Obj {
 
+}
+
+export interface Score {
+  userName: string,
+  timeAlive: number,
+  timestamp: Date,
 }
 
 export enum Status {
@@ -32,6 +39,8 @@ export enum Status {
   STARTING,
   PLAYING,
   ROUND_OVER,
+  ROUND_SCORES,
+  HIGH_SCORES,
 }
 
 export type State = {
@@ -39,6 +48,8 @@ export type State = {
   bullets: Bullet[],
   status: Status,
   startTime: number | null,
+  roundId: number | null,
+  leaderBoard: Score[] | null,
 }
 
 export function isNullLike(x: any) {
@@ -75,7 +86,7 @@ export type MoveAction = {
 
 export type JoinAction = {
   type: "join",
-  data: null | undefined
+  data: string,
 }
 
 export type Action = MoveAction | JoinAction;
